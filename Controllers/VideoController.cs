@@ -1,12 +1,15 @@
+using HuggingFace;
+//using LangChain.Providers.HuggingFace;
+//using LangChain.Providers.Ollama;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 
-//using Microsoft.Extensions.AI;
-//using HuggingFace;
-
 using kv_be_csharp_dotnet_dataapi_collections.Models;
 using kv_be_csharp_dotnet_dataapi_collections.Repositories;
+using LangChain.Prompts;
+using Newtonsoft.Json;
+using System.Text;
 
 namespace kv_be_csharp_dotnet_dataapi_collections.Controllers;
 
@@ -17,26 +20,53 @@ public class VideosController : Controller
 {
     private List<string> _YOUTUBE_PATTERNS = new List<string>();
     private string? _YOUTUBE_API_KEY = System.Environment.GetEnvironmentVariable("YOUTUBE_API_KEY");
+    private string? _HF_API_KEY = System.Environment.GetEnvironmentVariable("HF_API_KEY");
     private static readonly string _YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos?part=snippet&id={YOUTUBE_ID}&key={API_KEY}";
-
-//    private readonly Embedding embeddingModel;
+    private static readonly string _modelId = "ibm-granite/granite-embedding-30m-english";
+    
+    // https://huggingface.co/spaces/ipepe/nomic-embeddings
+    private static readonly string _HF_IPEPE_SPACE_ENDPOINT = "https://ipepe-nomic-embeddings.hf.space/embed";
+    private HttpClient _hFhttpClient;
 
     private readonly IVideoDAL _videoDAL;
 
     public VideosController(IVideoDAL videoDAL)
     {
+        // videoDAL instantiation
         _videoDAL = videoDAL;
 
+        // YouTube regex patterns
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtu\\.be/(?<id>[A-Za-z0-9_-]{11})");
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtube\\.com/watch\\?v=(?<id>[A-Za-z0-9_-]{11})");
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtube\\.com/embed/(?<id>[A-Za-z0-9_-]{11})");
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtube\\.com/v/(?<id>[A-Za-z0-9_-]{11})");
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtube\\.com/shorts/(?<id>[A-Za-z0-9_-]{11})");
 
+        // check YouTube API KEY from env var
         if (string.IsNullOrEmpty(_YOUTUBE_API_KEY))
         {
             Console.WriteLine("ERROR: YOUTUBE_API_KEY must be defined as an environment variable.");
         }
+
+        // check HuggingFace API KEY from env var
+        if (string.IsNullOrEmpty(_HF_API_KEY))
+        {
+            Console.WriteLine("ERROR: HF_API_KEY must be defined as an environment variable.");
+        }
+
+        // define HuggingFace embedding model
+        _hFhttpClient = new HttpClient();
+
+        //var hFClient = new HuggingFaceClient(_HF_API_KEY, httpClient);
+        //HuggingFaceConfiguration config = new();
+        //config.ApiKey = _HF_API_KEY;
+        //config.ModelId = _modelId;
+
+        //var hFProvider = new HuggingFaceProvider(config, client);
+        //var oLProvider = new OllamaProvider();
+        //var model = new OllamaEmbeddingModel(oLProvider, _modelId);
+        //var embeddingModel = new LangChain.Providers.HuggingFace.Predefined.Gpt2Model(hFProvider);
+
     }
 
     [HttpPost]
@@ -73,11 +103,24 @@ public class VideosController : Controller
             video.processingStatus = "PENDING";
             video.videoId = Guid.NewGuid();
             video.userId = submitRequest.userId;
-            
+
             // Generate the embedding for the video
-            String videoText = video.name;
+            var req = new HuggingFaceRequest();
+            req.text = video.name;
+            req.model = _modelId;
+
+            var json = JsonConvert.SerializeObject(req);
+            var data = new StringContent(json, Encoding.UTF8, "application/json");
+            var hFRequestMessage = new HttpRequestMessage(HttpMethod.Post, _HF_IPEPE_SPACE_ENDPOINT)
+            {
+                Content = data
+            };
+            HttpResponseMessage hFResponse = await _hFhttpClient.SendAsync(hFRequestMessage);
+            string jsonResponse = await hFResponse.Content.ReadAsStringAsync();
+            HuggingFaceResponse hFResp = JsonConvert.DeserializeObject<HuggingFaceResponse>(jsonResponse);
+
             //float[] videoVector = embeddingModel.embed(videoText).content().vector();
-            //video.videoVector = videoVector;
+            video.videoVector = hFResp.embedding;
 
             // save video to database
             Video savedVideo = _videoDAL.SaveVideo(video);
@@ -177,11 +220,11 @@ public class VideosController : Controller
             // Extract thumbnail URL (prefer high quality, fallback to default)
             if (snippet.TryGetProperty("thumbnails", out var thumbnails)) {
                 if (thumbnails.TryGetProperty("high", out var thumbH)) {
-                    metadata.thumbnailUrl = thumbH.GetProperty("high").GetProperty("url").GetString();
+                    metadata.thumbnailUrl = thumbH.GetProperty("url").GetString();
                 } else if (thumbnails.TryGetProperty("medium", out var thumbM)) {
-                    metadata.thumbnailUrl = thumbM.GetProperty("medium").GetProperty("url").GetString();
+                    metadata.thumbnailUrl = thumbM.GetProperty("url").GetString();
                 } else if (thumbnails.TryGetProperty("default", out var thumbD)) {
-                    metadata.thumbnailUrl = thumbD.GetProperty("default").GetProperty("url").GetString();
+                    metadata.thumbnailUrl = thumbD.GetProperty("url").GetString();
                 }
             }
             
