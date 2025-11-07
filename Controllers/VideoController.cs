@@ -1,6 +1,4 @@
-using HuggingFace;
-//using LangChain.Providers.HuggingFace;
-//using LangChain.Providers.Ollama;
+using Cassandra;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.RegularExpressions;
 using System.Text.Json;
@@ -90,9 +88,6 @@ public class VideosController : Controller
             // fetch youtube metadata
             YoutubeMetadata? youtubeMetadata = await fetchYoutubeMetadata(youtubeId);
 
-            //logger.info("Youtube metadata.title: {}", youtubeMetadata.getTitle());
-            //logger.info("Youtube metadata.thumbnailUrl: {}", youtubeMetadata.getThumbnailUrl());
-
             if (youtubeMetadata is not null)
             { 
                 video.name = youtubeMetadata.title;
@@ -120,7 +115,7 @@ public class VideosController : Controller
             HuggingFaceResponse hFResp = JsonConvert.DeserializeObject<HuggingFaceResponse>(jsonResponse);
 
             //float[] videoVector = embeddingModel.embed(videoText).content().vector();
-            video.videoVector = hFResp.embedding;
+            video.videoVector = (CqlVector<float>)hFResp.embedding;
 
             // save video to database
             Video savedVideo = _videoDAL.SaveVideo(video);
@@ -184,8 +179,6 @@ public class VideosController : Controller
             String url = _YOUTUBE_API_URL
                     .Replace("{YOUTUBE_ID}", youtubeId)
                     .Replace("{API_KEY}", _YOUTUBE_API_KEY);
-
-            Console.WriteLine("Fetching YouTube metadata for ID: " + youtubeId);
 
             var json = await httpClient.GetStringAsync(url);
 

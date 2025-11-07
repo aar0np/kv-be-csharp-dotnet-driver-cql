@@ -1,3 +1,4 @@
+using Cassandra;
 using Newtonsoft.Json;
 
 namespace kv_be_csharp_dotnet_dataapi_collections.Models;
@@ -24,16 +25,17 @@ public class VideoResponse
 
     [JsonProperty("creator")]
     public string userName { get; set; } = string.Empty;
-    public long commentCount { get; set; } = 0;
-    public long views { get; set; } = 0;
+    public int commentCount { get; set; } = 0;
+    public int views { get; set; } = 0;
     public string processingStatus { get; set; } = "PENDING";
 
     [JsonProperty("averageRating")]
     public float rating { get; set; } = 0F;
-    public float[] videoVector { get; set; } = Array.Empty<float>();
+    //public float[] videoVector { get; set; } = Array.Empty<float>();
+    public CqlVector<float>? videoVector { get; set; }
 
     [JsonProperty("content_features")]
-    public float[] contentFeatures { get; set; } = Array.Empty<float>();
+    public CqlVector<float>? contentFeatures { get; set; }
 
     public string youtubeVideoId { get; set; } = string.Empty;
 
