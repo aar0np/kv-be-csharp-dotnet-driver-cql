@@ -10,19 +10,29 @@ public class MappingHelper : Mappings
         For<Video>()
             .TableName("videos")
             .PartitionKey("videoid")
-            //.Column(v => v.videoId, cm => cm.WithName("videoid"))
             .Column(v => v.addedDate, cm => cm.WithName("added_date"))
             .Column(v => v.contentFeatures, cm => cm.WithName("content_features"))
-            //.Column(v => v.description, cm => cm.WithName("description"))
-            //.Column(v => v.location, cm => cm.WithName("location"))
             .Column(v => v.locationType, cm => cm.WithName("location_type"))
-            //.Column(v => v.name, cm => cm.WithName("name"))
-            .Column(v => v.processingStatus, cm => cm.WithName("processing_status"))
+            //.Column(v => v.processingStatus, cm => cm.WithName("processing_status"))
             .Column(v => v.previewImageLocation, cm => cm.WithName("preview_image_location"))
-            //.Column(v => v.tags, cm => cm.WithName("tags"))
-            //.Column(v => v.userId, cm => cm.WithName("userid"))
-            .Column(v => v.videoVector, cm => cm.WithName("video_vector"))
-            //.Column(v => v.views, cm => cm.WithName("views"));
-            .Column(v => v.youtubeId, cm => cm.WithName("youtube_id"));
+            .Column(v => v.youtubeId, cm => cm.WithName("youtube_id"))
+            .Column(v => v.contentRating, cm => cm.WithName("content_rating"));
+        For<LatestVideo>()
+            .TableName("latest_videos")
+            .PartitionKey("day")
+            .ClusteringKey("added_date", "videoid")
+            .Column(lv => lv.addedDate, cm => cm.WithName("added_date"))
+            .Column(lv => lv.previewImageLocation, cm => cm.WithName("preview_image_location"))//;
+            .Column(lv => lv.contentRating, cm => cm.WithName("content_rating"));
+        For<Comment>()
+            .TableName("comments")
+            .PartitionKey("videoid")
+            .ClusteringKey("commentid")
+            .Column(c => c.sentimentScore, cm => cm.WithName("sentiment_score"));
+        For<UserComment>()
+            .TableName("comments_by_user")
+            .PartitionKey("userid")
+            .ClusteringKey("commentid")
+            .Column(c => c.sentimentScore, cm => cm.WithName("sentiment_score"));
     }
 }

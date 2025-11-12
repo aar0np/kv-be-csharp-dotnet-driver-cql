@@ -5,9 +5,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
-// register repository and services
+// register repository and services as singletons
 builder.Services.AddSingleton<ICassandraConnection, CassandraConnection>();
-builder.Services.AddScoped<IVideoDAL, VideoDAL>();
+builder.Services.AddSingleton<IVideoDAL, VideoDAL>();
+builder.Services.AddSingleton<ILatestVideosDAL, LatestVideosDAL>();
+builder.Services.AddSingleton<ICommentDAL, CommentDAL>();
 
 // Register HttpClient for Astra DB service
 //builder.Services.AddHttpClient<IAstraHelperService, AstraHelperService>();

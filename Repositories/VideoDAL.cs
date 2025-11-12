@@ -1,3 +1,4 @@
+using Cassandra;
 using Cassandra.Mapping;
 using kv_be_csharp_dotnet_dataapi_collections.Models;
 
@@ -11,7 +12,6 @@ public class VideoDAL : IVideoDAL
     public VideoDAL(ICassandraConnection cassandraConnection)
     {
         _session = cassandraConnection.GetCQLSession();
-        MappingConfiguration.Global.Define<MappingHelper>();
         _mapper = new Mapper(_session);
     }
 
@@ -22,10 +22,23 @@ public class VideoDAL : IVideoDAL
         return video;
     }
     
+    public async void UpdateVideo(Video video)
+    {
+        _mapper.Update(video);
+    }
+
     public async Task<Video?> GetVideoByVideoId(Guid videoId)
     {
         Video video = await _mapper.SingleAsync<Video>("WHERE videoid=?", videoId);
 
         return video;
+    }
+
+    public async Task<IEnumerable<Video>> GetByVector(CqlVector<float> vector, int limit)
+    {
+        var vectorSearchData =
+                await _mapper.FetchAsync<Video>("ORDER BY content_features ANN OF ? LIMIT ?", vector, limit);
+
+        return vectorSearchData;
     }
 }

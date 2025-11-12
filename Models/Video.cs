@@ -20,10 +20,6 @@ public class Video
     [JsonProperty("preview_image_location")]
     public string previewImageLocation { get; set; } = string.Empty;
 
-    [JsonProperty("video_vector")]
-    //public float[] videoVector { get; set; } = Array.Empty<float>();
-    public CqlVector<float>? videoVector { get; set; }
-
     [JsonProperty("content_features")]
     public CqlVector<float>? contentFeatures { get; set; }
 //    public bool deleted { get; set; } = false;
@@ -37,12 +33,14 @@ public class Video
     //    [JsonProperty("last_viewed")]
     //    public DateTime lastViewed { get; set; } = DateTime.UtcNow;
 
-    [JsonProperty("processing_status")]
-    public string processingStatus { get; set; } = "PENDING";
-
+    //[JsonProperty("processing_status")]
+    //public string processingStatus { get; set; } = "PENDING";
     public HashSet<string> tags { get; set; } = new();
     public int views { get; set; } = 0;
-
     [JsonProperty("youtube_id")]
     public string youtubeId { get; set; } = string.Empty;
+    [JsonProperty("content_rating")]
+    public string contentRating { get; set; } = string.Empty;
+    public string category { get; set; } = string.Empty;
+    public string language { get; set; } = string.Empty;
 }

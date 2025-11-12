@@ -21,24 +21,20 @@ public class VideoResponse
     public string previewImageLocation { get; set; } = string.Empty;
 
     [JsonProperty("submittedAt")]
-    public DateTime addedDate { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset addedDate { get; set; } = DateTime.UtcNow;
 
     [JsonProperty("creator")]
     public string userName { get; set; } = string.Empty;
     public int commentCount { get; set; } = 0;
     public int views { get; set; } = 0;
     public string processingStatus { get; set; } = "PENDING";
-
     [JsonProperty("averageRating")]
     public float rating { get; set; } = 0F;
-    //public float[] videoVector { get; set; } = Array.Empty<float>();
-    public CqlVector<float>? videoVector { get; set; }
-
     [JsonProperty("content_features")]
     public CqlVector<float>? contentFeatures { get; set; }
-
     public string youtubeVideoId { get; set; } = string.Empty;
-
+    public string contentRating { get; set; } = string.Empty;
+    public string category { get; set; } = string.Empty;
     public static VideoResponse fromVideo(Video video)
     {
         VideoResponse response = new VideoResponse();
@@ -52,10 +48,26 @@ public class VideoResponse
         response.locationType = video.locationType;
         response.previewImageLocation = video.previewImageLocation;
         response.addedDate = video.addedDate;
-        response.videoVector = video.videoVector;
         response.contentFeatures = video.contentFeatures;
         response.youtubeVideoId = video.youtubeId;
         response.views = video.views;
+        response.contentRating = video.contentRating;
+        response.category = video.category;
+
+        return response;
+    }
+
+    public static VideoResponse fromLatestVideo(LatestVideo video)
+    {
+        VideoResponse response = new VideoResponse();
+        response.key = video.videoId;
+        response.videoId = video.videoId;
+        response.name = video.name;
+        response.userId = video.userId;
+        response.previewImageLocation = video.previewImageLocation;
+        response.addedDate = video.addedDate;
+        response.contentRating = video.contentRating;
+        response.category = video.category;
 
         return response;
     }

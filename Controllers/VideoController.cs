@@ -5,7 +5,6 @@ using System.Text.Json;
 
 using kv_be_csharp_dotnet_dataapi_collections.Models;
 using kv_be_csharp_dotnet_dataapi_collections.Repositories;
-using LangChain.Prompts;
 using Newtonsoft.Json;
 using System.Text;
 
@@ -27,11 +26,13 @@ public class VideosController : Controller
     private HttpClient _hFhttpClient;
 
     private readonly IVideoDAL _videoDAL;
+    private readonly ILatestVideosDAL _latestVideosDAL;
 
-    public VideosController(IVideoDAL videoDAL)
+    public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL)
     {
         // videoDAL instantiation
         _videoDAL = videoDAL;
+        _latestVideosDAL = latestVideosDAL;
 
         // YouTube regex patterns
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtu\\.be/(?<id>[A-Za-z0-9_-]{11})");
@@ -52,19 +53,8 @@ public class VideosController : Controller
             Console.WriteLine("ERROR: HF_API_KEY must be defined as an environment variable.");
         }
 
-        // define HuggingFace embedding model
+        // define HTTP client to hit HuggingFace embedding model
         _hFhttpClient = new HttpClient();
-
-        //var hFClient = new HuggingFaceClient(_HF_API_KEY, httpClient);
-        //HuggingFaceConfiguration config = new();
-        //config.ApiKey = _HF_API_KEY;
-        //config.ModelId = _modelId;
-
-        //var hFProvider = new HuggingFaceProvider(config, client);
-        //var oLProvider = new OllamaProvider();
-        //var model = new OllamaEmbeddingModel(oLProvider, _modelId);
-        //var embeddingModel = new LangChain.Providers.HuggingFace.Predefined.Gpt2Model(hFProvider);
-
     }
 
     [HttpPost]
@@ -83,7 +73,7 @@ public class VideosController : Controller
 
             // parse youtube id from url
             string youtubeId = extractYouTubeId(submitRequest.youtubeUrl);
-            video.youtubeId = youtubeId;
+            //video.youtubeId = youtubeId;
 
             // fetch youtube metadata
             YoutubeMetadata? youtubeMetadata = await fetchYoutubeMetadata(youtubeId);
@@ -95,7 +85,7 @@ public class VideosController : Controller
             }
 
             // generate remaining properties
-            video.processingStatus = "PENDING";
+            //video.processingStatus = "PENDING";
             video.videoId = Guid.NewGuid();
             video.userId = submitRequest.userId;
 
@@ -115,10 +105,11 @@ public class VideosController : Controller
             HuggingFaceResponse hFResp = JsonConvert.DeserializeObject<HuggingFaceResponse>(jsonResponse);
 
             //float[] videoVector = embeddingModel.embed(videoText).content().vector();
-            video.videoVector = (CqlVector<float>)hFResp.embedding;
+            video.contentFeatures = (CqlVector<float>)hFResp.embedding;
 
-            // save video to database
+            // save video to two tables in database
             Video savedVideo = _videoDAL.SaveVideo(video);
+            LatestVideo latestVideo = _latestVideosDAL.SaveLatestVideo(LatestVideo.fromVideo(video));
             
             VideoResponse response = VideoResponse.fromVideo(savedVideo);
             response.processingStatus = "PENDING";
@@ -137,7 +128,6 @@ public class VideosController : Controller
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<Video>> GetVideo(string id)
     {
-        //var video = await _videoSvc.GetVideoByVideoIdAsync(id);
         Guid videoid = Guid.Parse(id);
         var video = await _videoDAL.GetVideoByVideoId(videoid);
 
@@ -153,6 +143,133 @@ public class VideosController : Controller
         //Console.WriteLine(video);
 
         return Ok(video);
+    }
+
+    [HttpPut("id/{id}")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoResponse>> UpdateVideo(string id, VideoUpdateRequest videoUpdateRequest)
+    {
+        Guid videoid = Guid.Parse(id);
+        var video = await _videoDAL.GetVideoByVideoId(videoid);
+
+        if (video == null)
+        {
+            return NotFound($"Video with ID " + id + " returned null.");
+        }
+        else if (string.IsNullOrEmpty(video.name))
+        {
+            return NotFound($"Video with ID " + id + " not found.");
+        }
+
+        if (!string.IsNullOrEmpty(videoUpdateRequest.name))
+        {
+            video.name = videoUpdateRequest.name;
+        }
+
+        if (!string.IsNullOrEmpty(videoUpdateRequest.description))
+        {
+            video.description = videoUpdateRequest.description;
+        }
+
+        if (videoUpdateRequest.tags is not null && videoUpdateRequest.tags.Count > 0)
+        {
+            video.tags = videoUpdateRequest.tags;
+        }
+
+        _videoDAL.UpdateVideo(video);
+
+        return VideoResponse.fromVideo(video);
+    }
+
+    [HttpPost("id/{id}/view")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VideoResponse>> RecordVideoView(string id)
+    {
+        Guid videoid = Guid.Parse(id);
+        var video = await _videoDAL.GetVideoByVideoId(videoid);
+
+        if (video == null)
+        {
+            return NotFound($"Video with ID " + id + " returned null.");
+        }
+        else if (string.IsNullOrEmpty(video.name))
+        {
+            return NotFound($"Video with ID " + id + " not found.");
+        }
+
+        int views = video.views + 1;
+        video.views = views;
+
+        _videoDAL.UpdateVideo(video);
+
+        return VideoResponse.fromVideo(video);
+    }
+
+    [HttpGet("latest")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<VideoResponse>>> GetLatestVideos(int page, int pageSize)
+    {
+        if (page <= 0 || pageSize <= 0 || pageSize > 100)
+        {
+            pageSize = 10;
+        }
+
+        LocalDate today = LocalDate.Parse(DateTimeOffset.Now.Date.ToString("yyyy-MM-dd"));
+
+        var latestVideos = await _latestVideosDAL.GetLatestVideosToday(today, pageSize);
+        
+        if (!latestVideos.Any())
+        {
+            // latestVideos is empty for today - try again with only the LIMIT
+            latestVideos = await _latestVideosDAL.GetLatestVideos(pageSize);
+        }
+
+        List<VideoResponse> response = new();
+
+        foreach (LatestVideo video in latestVideos)
+        {
+            response.Add(VideoResponse.fromLatestVideo(video));
+        }
+
+        return response;
+    }
+
+    [HttpGet("id/{id}/related")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<VideoResponse>>> GetSimilarVideos(string id, int requestedLimit)
+    {
+        // if requestedLimit is an invalid number, default it to 5
+        int limit = requestedLimit <= 0 || requestedLimit > 20 ? 5 : requestedLimit;
+        Guid videoid = Guid.Parse(id);
+
+        var originalVideo = await _videoDAL.GetVideoByVideoId(videoid);
+
+        if (originalVideo is null)
+        {
+            return NotFound($"Video with ID " + id + " not found.");
+        }
+
+        if (originalVideo.contentFeatures is null)
+        {
+            return NotFound($"Video with ID " + id + " does not have a valid vector for content_features.");
+        }
+
+        var similarVideos = await _videoDAL.GetByVector(originalVideo.contentFeatures, limit + 1);
+        List<VideoResponse> response = new();
+
+        foreach (Video video in similarVideos)
+        {
+            if (!video.videoId.Equals(videoid))
+            {
+                response.Add(VideoResponse.fromVideo(video));
+            }
+        }
+
+        return response;
     }
 
     private string extractYouTubeId(string youtubeUrl)
