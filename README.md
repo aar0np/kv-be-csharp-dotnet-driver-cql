@@ -18,7 +18,7 @@ This repo demonstrates modern API best-practices with:
 
 ## Prerequisites
 1. **Dotnet 9+** runtime
-2. A **DataStax Astra DB** serverless database – grab a free account.
+2. A **DataStax Astra DB** serverless database – [grab a free account](astra.datastax.com).
 
 ## Setup & Configuration
 ```bash
