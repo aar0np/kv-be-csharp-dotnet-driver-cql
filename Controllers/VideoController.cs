@@ -7,6 +7,8 @@ using kv_be_csharp_dotnet_dataapi_collections.Models;
 using kv_be_csharp_dotnet_dataapi_collections.Repositories;
 using Newtonsoft.Json;
 using System.Text;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace kv_be_csharp_dotnet_dataapi_collections.Controllers;
 
@@ -27,12 +29,14 @@ public class VideosController : Controller
 
     private readonly IVideoDAL _videoDAL;
     private readonly ILatestVideosDAL _latestVideosDAL;
+    private readonly ICommentDAL _commentDAL;
 
-    public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL)
+    public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL, ICommentDAL commentDAL)
     {
         // videoDAL instantiation
         _videoDAL = videoDAL;
         _latestVideosDAL = latestVideosDAL;
+        _commentDAL = commentDAL;
 
         // YouTube regex patterns
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtu\\.be/(?<id>[A-Za-z0-9_-]{11})");
@@ -60,10 +64,12 @@ public class VideosController : Controller
     [HttpPost]
     [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<VideoResponse>> submitVideo(VideoSubmitRequest submitRequest) {
-
+    [Authorize]
+    public async Task<ActionResult<VideoResponse>> SubmitVideo(VideoSubmitRequest submitRequest) {
         try
         {
+            var userId = getUserIdFromAuth(HttpContext.User);
+
             // Create video with properties from request
             Video video = new Video();
 
@@ -87,7 +93,7 @@ public class VideosController : Controller
             // generate remaining properties
             //video.processingStatus = "PENDING";
             video.videoId = Guid.NewGuid();
-            video.userId = submitRequest.userId;
+            video.userId = userId;
 
             // Generate the embedding for the video
             var req = new HuggingFaceRequest();
@@ -148,6 +154,7 @@ public class VideosController : Controller
     [HttpPut("id/{id}")]
     [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Authorize]
     public async Task<ActionResult<VideoResponse>> UpdateVideo(string id, VideoUpdateRequest videoUpdateRequest)
     {
         Guid videoid = Guid.Parse(id);
@@ -272,6 +279,35 @@ public class VideosController : Controller
         return response;
     }
 
+    [HttpPost("{id}/comments")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Authorize]
+    public async Task<ActionResult<CommentResponse>> SubmitComment(Guid id, [FromBody] CommentSubmitRequest req)
+    {
+        Guid userId = getUserIdFromAuth(HttpContext.User);
+
+        Comment comment = new Comment();
+        comment.videoid = id;
+        comment.comment = req.commentText;
+
+        _commentDAL.SaveComment(comment);
+
+        return CommentResponse.fromComment(comment);
+    }
+
+    private Guid getUserIdFromAuth(ClaimsPrincipal user)
+    {
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier);
+
+        if (userIdClaim is not null)
+        {
+            return Guid.Parse(userIdClaim.Value);
+        }
+
+        return Guid.Empty;
+    }
+    
     private string extractYouTubeId(string youtubeUrl)
     {
 

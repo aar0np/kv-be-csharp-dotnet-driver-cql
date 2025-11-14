@@ -34,5 +34,15 @@ public class MappingHelper : Mappings
             .PartitionKey("userid")
             .ClusteringKey("commentid")
             .Column(c => c.sentimentScore, cm => cm.WithName("sentiment_score"));
+        For<User>()
+            .TableName("users")
+            .PartitionKey("userid")
+            .Column(u => u.accountStatus, cm => cm.WithName("account_status"))
+            .Column(u => u.createdDate, cm => cm.WithName("created_date"))
+            .Column(u => u.lastLoginDate, cm => cm.WithName("last_login_date"));
+        For<UserCredentials>()
+            .TableName("user_credentials")
+            .PartitionKey("email")
+            .Column(uc => uc.accountLocked, cm => cm.WithName("account_locked"));
     }
 }
