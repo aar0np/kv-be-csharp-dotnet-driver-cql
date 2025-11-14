@@ -30,13 +30,16 @@ public class VideosController : Controller
     private readonly IVideoDAL _videoDAL;
     private readonly ILatestVideosDAL _latestVideosDAL;
     private readonly ICommentDAL _commentDAL;
+    private readonly IUserDAL _userDAL;
 
-    public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL, ICommentDAL commentDAL)
+    public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL,
+     ICommentDAL commentDAL, IUserDAL userDAL)
     {
         // videoDAL instantiation
         _videoDAL = videoDAL;
         _latestVideosDAL = latestVideosDAL;
         _commentDAL = commentDAL;
+        _userDAL = userDAL;
 
         // YouTube regex patterns
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtu\\.be/(?<id>[A-Za-z0-9_-]{11})");
@@ -280,7 +283,7 @@ public class VideosController : Controller
     }
 
     [HttpPost("{id}/comments")]
-    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Authorize]
     public async Task<ActionResult<CommentResponse>> SubmitComment(Guid id, [FromBody] CommentSubmitRequest req)
@@ -290,10 +293,86 @@ public class VideosController : Controller
         Comment comment = new Comment();
         comment.videoid = id;
         comment.comment = req.commentText;
+        comment.userid = userId;
 
         _commentDAL.SaveComment(comment);
 
         return CommentResponse.fromComment(comment);
+    }
+
+    [HttpGet("{id}/comments")]
+    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    async Task<ActionResult<List<CommentResponse>>> GetCommentsForVideo(string id)
+    {
+        var videoid = Guid.Parse(id);
+        var comments = await _commentDAL.GetCommentsByVideoId(videoid);
+        List<CommentResponse> response = new List<CommentResponse>();
+
+        foreach (var comment in comments)
+        {
+            var poster = await _userDAL.FindByUserId(comment.userid);
+            var commentResp = CommentResponse.fromComment(comment);
+
+            if (poster is null)
+            {
+                commentResp.username = "anonymous user";
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(poster.firstname))
+                {
+                    // firstname exists
+                    if (!string.IsNullOrEmpty(poster.lastname))
+                    {
+                        // lastname exists
+                        commentResp.username = poster.firstname + " " + poster.lastname;
+                    }
+                    else
+                    {
+                        // lastname null
+                        commentResp.username = poster.firstname;
+                    }
+                }
+                else
+                {
+                    // firstname null
+                    if (!string.IsNullOrEmpty(poster.lastname))
+                    {
+                        // lastname exists
+                        commentResp.username = poster.lastname;
+                    }
+                    else
+                    {
+                        // firstname and lastname are both null
+                        commentResp.username = "anonymous user";
+                    }
+                }
+            }
+
+            response.Add(commentResp);
+        }
+
+        return Ok(response);
+    }
+
+    [HttpDelete("comment/{commentid}")]
+    [Authorize]
+    async Task<IActionResult> DeleteComment(TimeUuid commentid)
+    {
+        // make sure that the comment exists
+        var comment = await _commentDAL.GetCommentById(commentid);
+
+        if (comment is not null)
+        {
+            // future - check for ADMIN role
+
+            // delete comment
+            await _commentDAL.DeleteComment(comment.videoid, commentid);
+            await _commentDAL.DeleteUserComment(comment.userid, commentid);
+        }
+
+        return BadRequest("Comment does not exist.");
     }
 
     private Guid getUserIdFromAuth(ClaimsPrincipal user)
