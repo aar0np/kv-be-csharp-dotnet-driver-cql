@@ -1,5 +1,4 @@
 using Cassandra;
-using Newtonsoft.Json;
 
 namespace kv_be_csharp_dotnet_dataapi_collections.Models;
 
@@ -9,9 +8,8 @@ public class CommentResponse
     public TimeUuid commentid { get; set; } = TimeUuid.NewId();
     public string comment { get; set; } = string.Empty;
     public Guid userid { get; set; } = Guid.Empty;
-    [JsonProperty("sentiment_score")]
-    public float sentimentScore { get; set; } = 0.0F;
-    public string username { get; set; } = string.Empty;
+    public float sentiment_score { get; set; } = 0.0F;
+    public string user_name { get; set; } = string.Empty;
     public DateTimeOffset timestamp { get; set; } = DateTimeOffset.Now;
 
     public static CommentResponse fromComment(Comment comment)
@@ -25,7 +23,7 @@ public class CommentResponse
 
         string strUserid = comment.userid.ToString();
         int firstDash = strUserid.IndexOf('-');
-        response.username = strUserid[..firstDash];
+        response.user_name = strUserid[..firstDash];
 
         return response;
     }

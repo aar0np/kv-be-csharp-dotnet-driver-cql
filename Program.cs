@@ -15,6 +15,7 @@ builder.Services.AddSingleton<IUserCredentialsDAL, UserCredentialsDAL>();
 builder.Services.AddSingleton<IVideoDAL, VideoDAL>();
 builder.Services.AddSingleton<ILatestVideosDAL, LatestVideosDAL>();
 builder.Services.AddSingleton<ICommentDAL, CommentDAL>();
+builder.Services.AddSingleton<IRatingDAL, RatingDAL>();
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");

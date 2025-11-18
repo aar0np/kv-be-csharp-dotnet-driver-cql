@@ -31,15 +31,17 @@ public class VideosController : Controller
     private readonly ILatestVideosDAL _latestVideosDAL;
     private readonly ICommentDAL _commentDAL;
     private readonly IUserDAL _userDAL;
+    private readonly IRatingDAL _ratingDAL;
 
     public VideosController(IVideoDAL videoDAL, ILatestVideosDAL latestVideosDAL,
-     ICommentDAL commentDAL, IUserDAL userDAL)
+     ICommentDAL commentDAL, IUserDAL userDAL, IRatingDAL ratingDAL)
     {
         // videoDAL instantiation
         _videoDAL = videoDAL;
         _latestVideosDAL = latestVideosDAL;
         _commentDAL = commentDAL;
         _userDAL = userDAL;
+        _ratingDAL = ratingDAL;
 
         // YouTube regex patterns
         _YOUTUBE_PATTERNS.Add("(?:https?://)?(?:www\\.)?youtu\\.be/(?<id>[A-Za-z0-9_-]{11})");
@@ -68,7 +70,8 @@ public class VideosController : Controller
     [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Authorize]
-    public async Task<ActionResult<VideoResponse>> SubmitVideo(VideoSubmitRequest submitRequest) {
+    public async Task<ActionResult<VideoResponse>> SubmitVideo(VideoSubmitRequest submitRequest)
+    {
         try
         {
             var userId = getUserIdFromAuth(HttpContext.User);
@@ -132,10 +135,10 @@ public class VideosController : Controller
         }
     }
 
-    [HttpGet("{id}")]
-    [ProducesResponseType(typeof(Video), StatusCodes.Status200OK)]
+    [HttpGet("id/{id}")]
+    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Video>> GetVideo(string id)
+    public async Task<ActionResult<VideoResponse>> GetVideo(string id)
     {
         Guid videoid = Guid.Parse(id);
         var video = await _videoDAL.GetVideoByVideoId(videoid);
@@ -149,9 +152,13 @@ public class VideosController : Controller
             return NotFound($"Video with ID " + id + " not found.");
         }
 
-        //Console.WriteLine(video);
+        // make sure that we have a YouTubeID
+        if (string.IsNullOrEmpty(video.youtubeId) && !string.IsNullOrEmpty(video.location))
+        {
+            video.youtubeId = extractYouTubeId(video.location);
+        }
 
-        return Ok(video);
+        return Ok(VideoResponse.fromVideo(video));
     }
 
     [HttpPut("id/{id}")]
@@ -220,7 +227,7 @@ public class VideosController : Controller
     [HttpGet("latest")]
     [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<List<VideoResponse>>> GetLatestVideos(int page, int pageSize)
+    public async Task<ActionResult<LatestVideosResponse>> GetLatestVideos(int page, int pageSize)
     {
         if (page <= 0 || pageSize <= 0 || pageSize > 100)
         {
@@ -241,14 +248,43 @@ public class VideosController : Controller
 
         foreach (LatestVideo video in latestVideos)
         {
-            response.Add(VideoResponse.fromLatestVideo(video));
+            VideoResponse videoResponse = VideoResponse.fromLatestVideo(video);
+
+            // Get all ratings for the videos
+            var ratings = await _ratingDAL.FindByVideoId(video.videoId);
+
+            if (ratings is not null)
+            {
+                int ratingCount = 0;
+                int totalRating = 0;
+                foreach (Rating rating in ratings)
+                {
+                    totalRating += rating.rating;
+                    ratingCount++;
+                }
+
+                if (ratingCount > 0)
+                {
+                    videoResponse.averageRating = totalRating / ratingCount;
+                }
+                else
+                {
+                    videoResponse.averageRating = 0.0f;
+                }
+            }
+            else
+            {
+                videoResponse.averageRating = 0.0f;
+            }
+
+            response.Add(videoResponse);
         }
 
-        return response;
+        return new LatestVideosResponse(response);
     }
 
     [HttpGet("id/{id}/related")]
-    [ProducesResponseType(typeof(VideoResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(List<VideoResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<List<VideoResponse>>> GetSimilarVideos(string id, int requestedLimit)
     {
@@ -275,39 +311,65 @@ public class VideosController : Controller
         {
             if (!video.videoId.Equals(videoid))
             {
-                response.Add(VideoResponse.fromVideo(video));
+                // Get all ratings for the video
+                var ratings = await _ratingDAL.FindByVideoId(video.videoId);
+
+                int ratingCount = 0;
+                int totalRating = 0;
+                
+                foreach (var rating in ratings) {
+                    ratingCount++;
+                    totalRating += rating.rating;
+                }
+
+                VideoResponse videoResponse = VideoResponse.fromVideo(video);
+
+                if (ratingCount > 0)
+                {
+                    videoResponse.averageRating = totalRating / ratingCount;
+                }
+                else
+                {
+                    videoResponse.averageRating = 0.0f;
+                }
+
+                response.Add(videoResponse);
             }
         }
 
         return response;
     }
 
-    [HttpPost("{id}/comments")]
+    [HttpPost("{videoid}/comments")]
     [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [Authorize]
-    public async Task<ActionResult<CommentResponse>> SubmitComment(Guid id, [FromBody] CommentSubmitRequest req)
+    public async Task<ActionResult<CommentResponse>> SubmitComment(Guid videoid, [FromBody] CommentSubmitRequest req)
     {
         Guid userId = getUserIdFromAuth(HttpContext.User);
 
         Comment comment = new Comment();
-        comment.videoid = id;
-        comment.comment = req.commentText;
+        comment.videoid = videoid;
+        comment.comment = req.text;
         comment.userid = userId;
 
         _commentDAL.SaveComment(comment);
+        _commentDAL.SaveUserComment(UserComment.fromComment(comment));
 
         return CommentResponse.fromComment(comment);
     }
 
-    [HttpGet("{id}/comments")]
-    [ProducesResponseType(typeof(CommentResponse), StatusCodes.Status200OK)]
+    [HttpGet("{videoid}/comments")]
+    [ProducesResponseType(typeof(CommentsDataResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    async Task<ActionResult<List<CommentResponse>>> GetCommentsForVideo(string id)
+    public async Task<ActionResult<List<CommentsDataResponse>>> GetCommentsForVideo(Guid videoid,
+            int page, int pageSize)
     {
-        var videoid = Guid.Parse(id);
-        var comments = await _commentDAL.GetCommentsByVideoId(videoid);
-        List<CommentResponse> response = new List<CommentResponse>();
+        // rudimentary limit calculation, for now
+        int limit = pageSize * page;
+        
+        var comments = await _commentDAL.GetCommentsByVideoId(videoid, limit);
+        List<CommentResponse> response = new ();
 
         foreach (var comment in comments)
         {
@@ -316,7 +378,7 @@ public class VideosController : Controller
 
             if (poster is null)
             {
-                commentResp.username = "anonymous user";
+                commentResp.user_name = "anonymous user";
             }
             else
             {
@@ -326,12 +388,12 @@ public class VideosController : Controller
                     if (!string.IsNullOrEmpty(poster.lastname))
                     {
                         // lastname exists
-                        commentResp.username = poster.firstname + " " + poster.lastname;
+                        commentResp.user_name = poster.firstname + " " + poster.lastname;
                     }
                     else
                     {
                         // lastname null
-                        commentResp.username = poster.firstname;
+                        commentResp.user_name = poster.firstname;
                     }
                 }
                 else
@@ -340,12 +402,12 @@ public class VideosController : Controller
                     if (!string.IsNullOrEmpty(poster.lastname))
                     {
                         // lastname exists
-                        commentResp.username = poster.lastname;
+                        commentResp.user_name = poster.lastname;
                     }
                     else
                     {
                         // firstname and lastname are both null
-                        commentResp.username = "anonymous user";
+                        commentResp.user_name = "anonymous user";
                     }
                 }
             }
@@ -353,12 +415,12 @@ public class VideosController : Controller
             response.Add(commentResp);
         }
 
-        return Ok(response);
+        return Ok(new CommentsDataResponse(response));
     }
 
     [HttpDelete("comment/{commentid}")]
     [Authorize]
-    async Task<IActionResult> DeleteComment(TimeUuid commentid)
+    public async Task<IActionResult> DeleteComment(TimeUuid commentid)
     {
         // make sure that the comment exists
         var comment = await _commentDAL.GetCommentById(commentid);

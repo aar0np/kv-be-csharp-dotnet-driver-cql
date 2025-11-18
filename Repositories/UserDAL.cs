@@ -16,7 +16,7 @@ public class UserDAL : IUserDAL
 
     public async Task<bool> ExistsByEmail(string email)
     {
-        var user = await _mapper.SingleAsync<User>("WHERE email=?", email);
+        var user = await _mapper.FirstOrDefaultAsync<User>("WHERE email=?", email);
 
         if (user is null)
         {
@@ -34,7 +34,7 @@ public class UserDAL : IUserDAL
     public async Task<User?> FindByUserId(Guid userid)
     {
         var user = await _mapper.SingleAsync<User>("WHERE userid=?", userid);
-        return user;        
+        return user;
     }
 
     public User SaveUser(User user)

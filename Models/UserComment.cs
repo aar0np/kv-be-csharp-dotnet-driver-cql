@@ -11,4 +11,17 @@ public class UserComment
     public Guid userid { get; set; } = Guid.Empty;
     [JsonProperty("sentiment_score")]
     public float sentimentScore { get; set; } = 0.0F;
+
+    public static UserComment fromComment(Comment comment)
+    {
+        UserComment userComment = new();
+
+        userComment.comment = comment.comment;
+        userComment.commentid = comment.commentid;
+        userComment.sentimentScore = comment.sentimentScore;
+        userComment.userid = comment.userid;
+        userComment.videoid = comment.videoid;
+
+        return userComment;
+    }
 }

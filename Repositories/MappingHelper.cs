@@ -44,5 +44,10 @@ public class MappingHelper : Mappings
             .TableName("user_credentials")
             .PartitionKey("email")
             .Column(uc => uc.accountLocked, cm => cm.WithName("account_locked"));
+        For<Rating>()
+            .TableName("video_ratings_by_user")
+            .PartitionKey("videoid")
+            .ClusteringKey("userid")
+            .Column(r => r.ratingDate, cm => cm.WithName("rating_date"));
     }
 }

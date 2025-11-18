@@ -38,9 +38,9 @@ public class CommentDAL : ICommentDAL
         return userComments;
     }
 
-    public async Task<IEnumerable<Comment?>> GetCommentsByVideoId(Guid videoId)
+    public async Task<IEnumerable<Comment?>> GetCommentsByVideoId(Guid videoId, int limit)
     {
-        var comments = await _mapper.FetchAsync<Comment>("WHERE videoid=?", videoId);
+        var comments = await _mapper.FetchAsync<Comment>("WHERE videoid=? LIMIT ?", videoId, limit);
         return comments;
     }
 
@@ -51,6 +51,18 @@ public class CommentDAL : ICommentDAL
     }
 
     public Comment UpdateComment(Comment comment)
+    {
+        _mapper.Update(comment);
+        return comment;
+    }
+
+    public UserComment SaveUserComment(UserComment comment)
+    {
+        _mapper.Insert(comment);
+        return comment;
+    }
+    
+    public UserComment UpdateUserComment(UserComment comment)
     {
         _mapper.Update(comment);
         return comment;

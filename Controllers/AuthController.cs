@@ -159,14 +159,14 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("{userId}")]
-    [ProducesResponseType(typeof(Models.User), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Models.UserResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<Models.User>> GetUser(Guid userId) {
-        var user = _userDAL.FindByUserId(userId);
+    public async Task<ActionResult<Models.UserResponse>> GetUser(Guid userId) {
+        var user = await _userDAL.FindByUserId(userId);
         if (user is not null)
         {
 
-            return Ok(user);
+            return Ok(UserResponse.fromUser(user));
         }
         else
         {
