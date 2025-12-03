@@ -15,6 +15,7 @@ public class VideoResponse
     public int location_type { get; set; } = 0;
     public string thumbnailUrl { get; set; } = string.Empty;
     public DateTimeOffset submittedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset uploadDate { get; set; } = DateTime.UtcNow;
     public string creator { get; set; } = string.Empty;
     public int commentCount { get; set; } = 0;
     public int views { get; set; } = 0;
@@ -38,6 +39,7 @@ public class VideoResponse
         response.location_type = video.locationType;
         response.thumbnailUrl = video.previewImageLocation;
         response.submittedAt = video.addedDate;
+        response.uploadDate = video.addedDate;
         response.content_features = video.contentFeatures;
         response.youtubeVideoId = video.youtubeId;
         response.views = video.views;
@@ -56,6 +58,7 @@ public class VideoResponse
         response.userId = video.userId;
         response.thumbnailUrl = video.previewImageLocation;
         response.submittedAt = video.addedDate;
+        response.uploadDate = video.addedDate;
         response.contentRating = video.contentRating;
         response.category = video.category;
 
