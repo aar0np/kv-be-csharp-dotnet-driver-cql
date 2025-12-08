@@ -24,7 +24,9 @@ public class VideosController : Controller
     private static readonly string _modelId = "ibm-granite/granite-embedding-30m-english";
     
     // https://huggingface.co/spaces/ipepe/nomic-embeddings
-    private static readonly string _HF_IPEPE_SPACE_ENDPOINT = "https://ipepe-nomic-embeddings.hf.space/embed";
+    // private static readonly string _HF_IPEPE_SPACE_ENDPOINT = "https://ipepe-nomic-embeddings.hf.space/embed";
+    // https://huggingface.co/spaces/aploetz/granite-embeddings
+    private static readonly string _HF_APLOETZ_SPACE_ENDPOINT = "https://aploetz-granite-embeddings.hf.space/embed";
     private HttpClient _hFhttpClient;
 
     private readonly IVideoDAL _videoDAL;
@@ -108,7 +110,7 @@ public class VideosController : Controller
 
             var json = JsonConvert.SerializeObject(req);
             var data = new StringContent(json, Encoding.UTF8, "application/json");
-            var hFRequestMessage = new HttpRequestMessage(HttpMethod.Post, _HF_IPEPE_SPACE_ENDPOINT)
+            var hFRequestMessage = new HttpRequestMessage(HttpMethod.Post, _HF_APLOETZ_SPACE_ENDPOINT)
             {
                 Content = data
             };
@@ -237,27 +239,38 @@ public class VideosController : Controller
         LocalDate today = LocalDate.Parse(DateTimeOffset.Now.Date.ToString("yyyy-MM-dd"));
 
         var latestVideos = await _latestVideosDAL.GetLatestVideosToday(today, pageSize);
-        
-        if (!latestVideos.Any())
+        //latestVideos.TryGetNonEnumeratedCount(out int count);
+        var latestVideosList = latestVideos.ToList();
+        int count = latestVideosList.Count;
+
+        if (count < pageSize)
         {
-            // latestVideos is empty for today - try again with only the LIMIT
-            latestVideos = await _latestVideosDAL.GetLatestVideos(pageSize);
+            Console.WriteLine(count + " latestVideos returned for " + today);            
+            var additionalVideos = await _latestVideosDAL.GetLatestVideos(pageSize - count);
+
+            // combine latestVideosList and additionalVideos for processing
+            latestVideos = latestVideosList.Concat(additionalVideos);
         }
 
         List<VideoResponse> response = new();
-
+        
         foreach (LatestVideo video in latestVideos)
         {
             VideoResponse videoResponse = VideoResponse.fromLatestVideo(video);
 
-            // Get all ratings for the videos
+            // get views for video
+            var videoData = await _videoDAL.GetVideoByVideoId(video.videoId);
+
+            videoResponse.views = videoData.views;
+
+            // Get all ratings for the video
             var ratings = await _ratingDAL.FindByVideoId(video.videoId);
 
             if (ratings is not null)
             {
                 int ratingCount = 0;
                 int totalRating = 0;
-                foreach (Rating rating in ratings)
+                foreach (var rating in ratings)
                 {
                     totalRating += rating.rating;
                     ratingCount++;
@@ -311,6 +324,9 @@ public class VideosController : Controller
         {
             if (!video.videoId.Equals(videoid))
             {
+                // Get views for the video
+                var videoData = await _videoDAL.GetVideoByVideoId(video.videoId);
+
                 // Get all ratings for the video
                 var ratings = await _ratingDAL.FindByVideoId(video.videoId);
 
@@ -323,6 +339,8 @@ public class VideosController : Controller
                 }
 
                 VideoResponse videoResponse = VideoResponse.fromVideo(video);
+
+                videoResponse.views = videoData.views;
 
                 if (ratingCount > 0)
                 {
